@@ -1,8 +1,8 @@
-use std::cmp::Ordering;
-use std::collections::{BinaryHeap, VecDeque};
+use crate::distribution;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use crate::distribution;
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, VecDeque};
 
 // BlockType - названия блоков
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -32,7 +32,7 @@ pub struct Transaction {
     pub current_block: BlockType,
     // next_block - адрес следующего блока
     pub next_block: BlockType,
-    pub robot_wait_start: f64, 
+    pub robot_wait_start: f64,
 }
 
 impl Eq for Transaction {}
@@ -187,13 +187,13 @@ impl CEC {
 
 impl SystemState {
     pub fn new(
-        resource: usize, 
-        r_min: f64, 
-        r_max: f64, 
+        resource: usize,
+        r_min: f64,
+        r_max: f64,
         m_min: f64,
         m_max: f64,
-        left: f64, 
-        right: f64, 
+        left: f64,
+        right: f64,
         seed: u64,
     ) -> Self {
         return SystemState {
@@ -205,7 +205,7 @@ impl SystemState {
             cec: CEC::new(),
             robot_busy_until: 0.0,
             robot_queue: VecDeque::new(),
-            robot_uniform_distr: distribution::UniformDistr::new(r_min,r_max),
+            robot_uniform_distr: distribution::UniformDistr::new(r_min, r_max),
             machine_uniform_distr: distribution::UniformDistr::new(m_min, m_max),
             right_triangular_distr: distribution::RightTriangular::new(left, right),
             rng: StdRng::seed_from_u64(seed),
@@ -220,7 +220,7 @@ impl SystemState {
     }
 
     pub fn robot_is_busy(&self) -> bool {
-        return self.current_time < self.robot_busy_until
+        return self.current_time < self.robot_busy_until;
     }
 
     pub fn inc_count_of_completed_details(&mut self) {

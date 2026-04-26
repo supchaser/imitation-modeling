@@ -2,6 +2,7 @@ mod config;
 mod distribution;
 mod models;
 mod simulate;
+mod print;
 
 fn main() {
     let mut system_state = models::SystemState::new(
