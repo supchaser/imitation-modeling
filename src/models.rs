@@ -66,7 +66,7 @@ pub struct CEC {
 // SystemState - общее состояние системы
 pub struct SystemState {
     // current_time - текущее время в системе
-    pub current_time: f64,
+    current_time: f64,
     // resource - сколько всего обрабатывающих центров
     pub resource: usize,
 
@@ -86,7 +86,10 @@ pub struct SystemState {
     pub robot_uniform_distr: distribution::UniformDistr,
     pub machine_uniform_distr: distribution::UniformDistr,
     pub right_triangular_distr: distribution::RightTriangular,
-    pub rng: StdRng
+    pub rng: StdRng,
+
+    // число заверешенных транзактов
+    count_of_completed_details: i64
 }
 
 impl Transaction {
@@ -167,7 +170,7 @@ impl CEC {
         self.queue.is_empty()
     }
 
-    pub fn delete(&mut self) -> Option<Transaction> {
+    pub fn pop_front(&mut self) -> Option<Transaction> {
         let elem = self.queue.pop_front();
         return elem;
     }
@@ -196,12 +199,25 @@ impl SystemState {
             robot_uniform_distr: distribution::UniformDistr::new(r_min,r_max),
             machine_uniform_distr: distribution::UniformDistr::new(m_min, m_max),
             right_triangular_distr: distribution::RightTriangular::new(left, right),
-            rng: StdRng::seed_from_u64(seed)
+            rng: StdRng::seed_from_u64(seed),
+            count_of_completed_details: 0,
         };
     }
 
     pub fn robot_is_busy(&self) -> bool {
         return self.current_time < self.robot_busy_until
+    }
+
+    pub fn inc_count_of_completed_details(&mut self) {
+        self.count_of_completed_details = self.count_of_completed_details + 1;
+    }
+
+    pub fn get_count_of_completed_details(&self) -> i64 {
+        return self.count_of_completed_details;
+    }
+
+    pub fn set_robot_busy_until(&mut self, t: f64) {
+        self.robot_busy_until = t;
     }
 
     pub fn get_resource(&self) -> usize {
@@ -226,10 +242,6 @@ impl SystemState {
 
     pub fn add_to_machines_queue(&mut self, t: Transaction) {
         self.machines_queue.push_back(t);
-    }
-
-    pub fn get_machines_queue_len(&self) -> usize {
-        return self.machines_queue.len();
     }
 
     pub fn delete_from_robot_queue(&mut self) {

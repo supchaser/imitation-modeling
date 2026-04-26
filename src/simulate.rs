@@ -1,8 +1,7 @@
 use crate::models;
 
 pub fn run(system_state: &mut crate::models::SystemState) {
-    let time = 100000.0;
-    let mut i = 0;
+    let time = 1000000.0;
     while !system_state.fec.is_empty() || !system_state.cec.is_empty() {
         if system_state.get_current_time() >= time {
             break;
@@ -18,55 +17,22 @@ pub fn run(system_state: &mut crate::models::SystemState) {
             let new_current_time = system_state.get_current_time() + transaction.get_time();
             system_state.set_current_time(new_current_time);
 
-            // // пока FEC не пустая и время транзактов меньше либо равно текущему времени в системе
-            // while let Some(transaction) = system_state.fec.pop()
-            //     && transaction.get_time() <= system_state.get_current_time()
-            // {
-            //     // перекидываем все возможные транзакты в CEC
-            //     system_state.cec.add_to_back(transaction);
-            // }
-        }
-
-        println!("ITER №: {}, CURRENT_TIME: {}", i, system_state.current_time);
-        println!("MACHINES BUSY COUNT: {}", system_state.machines_busy_count);
-
-        // обрабатываем транзакции из fec, переносим их в cec, пока позволяет таймер
-        while let Some(transaction) = system_state.fec.pop() {
-            // нужно корректировать таймер, возвращаем транзакт в FEC
-            if transaction.get_time() > system_state.get_current_time() {
-                system_state.fec.add(transaction);
-                break;
+            // пока FEC не пустая и время транзактов меньше либо равно текущему времени в системе
+            while let Some(transaction) = system_state.fec.peek()
+                && transaction.get_time() <= system_state.get_current_time()
+            {
+                // перекидываем все возможные транзакты в CEC
+                let transaction = system_state.fec.pop().unwrap();
+                system_state.cec.add_to_back(transaction);
             }
-
-            // ФП
-            println!("EXECUTE FEC TRANSACTION: {:?}", transaction);
-            execute_block(system_state, transaction);
         }
 
-        // println!(
-        //     "FEC: {:?}, CEC: {:?}",
-        //     system_state.fec,
-        //     system_state.cec
-        // );
-
-        while let Some(transaction) = system_state.cec.delete() {
-            println!("EXECUTE CEC TRANSACTION: {:?}", transaction);
-            // ФП
+        while let Some(transaction) = system_state.cec.pop_front() {
             execute_block(system_state, transaction);
         }
-
-        // println!(
-        //     "FEC: {:?}, CEC: {:?}",
-        //     system_state.fec,
-        //     system_state.cec
-        // );
-        i += 1;
     }
 
-    println!(
-        "\nSimulation finished at time: {:.2}",
-        system_state.current_time
-    );
+    println!("COUNT OF COMPLETED DETAILS: {}", system_state.get_count_of_completed_details());
 }
 
 fn execute_block(sys_state: &mut models::SystemState, mut t: models::Transaction) {
@@ -74,39 +40,51 @@ fn execute_block(sys_state: &mut models::SystemState, mut t: models::Transaction
         models::BlockType::Initial => {
             t.set_current_block(models::BlockType::Generate);
             t.set_next_block(models::BlockType::SeizeRobotToMachiningCenter);
+            // возвращаем обратно в CEC
+            sys_state.cec.add_to_front(t);
             return;
         }
         models::BlockType::Generate => {
-            // создаем новый транзакт и помещаем его в fec
+            // создаем новый транзакт и помещаем его в FEC
             let id = t.get_id() + 1;
             let time = sys_state.right_triangular_distr.sample(&mut sys_state.rng)
                 + sys_state.get_current_time();
             let new_transaction = models::Transaction::new(id, time);
+            // добавляем новый транзакт в FEC
             sys_state.fec.add(new_transaction);
 
             // обновляем текущий транзакт
             t.set_current_block(models::BlockType::SeizeRobotToMachiningCenter);
             t.set_next_block(models::BlockType::AdvanceRobotToMachiningCenter);
+            // возвращаем обратно в CEC
             sys_state.cec.add_to_front(t);
             return;
         }
         models::BlockType::SeizeRobotToMachiningCenter => {
             t.set_current_block(models::BlockType::AdvanceRobotToMachiningCenter);
             t.set_next_block(models::BlockType::ReleaseRobotToMachiningCenter);
+            // добавляем транзакт в очередь на робота
             sys_state.add_to_robot_queue(t);
+
+            // возвращаем обратно в CEC
             sys_state.cec.add_to_front(t);
             return;
         }
         models::BlockType::AdvanceRobotToMachiningCenter => {
-            // робот занят, заготовка остается в очереди на робота
+            // робот занят, заготовка остается в очереди на робота и перемещатеся в FEC (нужна ФКТ)
             if sys_state.robot_is_busy() {
                 sys_state.fec.add(t);
                 return;
             }
 
-            // робот свободен
-            let advance_time = sys_state.robot_uniform_distr.sample(&mut sys_state.rng);
+            // робот свободен => занимаем его
+            let mut advance_time = sys_state.robot_uniform_distr.sample(&mut sys_state.rng);
+            if t.get_id() == 3 {
+                advance_time = 1000.0;
+            }
             t.set_time(t.get_time() + advance_time);
+            // робот занят, пока транзакт его не освободит
+            sys_state.set_robot_busy_until(t.get_time());
             t.set_current_block(models::BlockType::ReleaseRobotToMachiningCenter);
             t.set_next_block(models::BlockType::EnterMachiningCenter);
             sys_state.fec.add(t);
@@ -118,7 +96,7 @@ fn execute_block(sys_state: &mut models::SystemState, mut t: models::Transaction
 
             t.set_current_block(models::BlockType::EnterMachiningCenter);
             t.set_next_block(models::BlockType::AdvanceMachiningCenter);
-            sys_state.cec.add_to_back(t);
+            sys_state.cec.add_to_front(t);
 
             // добавляем в очередь на обрабатывающий центр
             sys_state.add_to_machines_queue(t);
@@ -127,13 +105,15 @@ fn execute_block(sys_state: &mut models::SystemState, mut t: models::Transaction
         models::BlockType::EnterMachiningCenter => {
             // если все возможные обрабатывающие центры заняты, то оставляем деталь в очереди
             if sys_state.get_machines_busy_count() == sys_state.get_resource() {
+                // нужна ФКТ
+                sys_state.fec.add(t);
                 return;
             }
 
             // занимаем обрабатывающий центр
             let new_machines_busy_count = sys_state.get_machines_busy_count() + 1;
-            sys_state.set_machines_busy_count(new_machines_busy_count);
 
+            sys_state.set_machines_busy_count(new_machines_busy_count);
             t.set_current_block(models::BlockType::AdvanceMachiningCenter);
             t.set_next_block(models::BlockType::LeaveMachiningCenter);
             sys_state.cec.add_to_front(t);
@@ -141,30 +121,23 @@ fn execute_block(sys_state: &mut models::SystemState, mut t: models::Transaction
         }
         models::BlockType::AdvanceMachiningCenter => {
             let advance_time = sys_state.machine_uniform_distr.sample(&mut sys_state.rng);
-            // if t.get_id() == 2 || t.get_id() == 3 {
-            //     advance_time = 1000.0;
-            // }
             t.set_current_block(models::BlockType::LeaveMachiningCenter);
             t.set_next_block(models::BlockType::SeizeRobotToConveyor);
             t.set_time(t.get_time() + advance_time);
-            if t.get_id() == 2 {
-                println!("TIME {}", t.get_time());
-            }
             sys_state.fec.add(t);
             return;
         }
         models::BlockType::LeaveMachiningCenter => {
             // робот занят, оставляем деталь в очереди на робота
             if sys_state.robot_is_busy() {
+                // нужна ФКТ
                 sys_state.fec.add(t);
                 return;
             }
 
-            if t.get_id() == 2 {
-                println!("TTTTTTTUUUUUUUUUUTTTTTTTT");
-            }
             // освобождаем обрабатывающий центр
             let new_machines_busy_count = sys_state.get_machines_busy_count() - 1;
+
             sys_state.set_machines_busy_count(new_machines_busy_count);
             sys_state.delete_from_machines_queue();
 
@@ -178,6 +151,7 @@ fn execute_block(sys_state: &mut models::SystemState, mut t: models::Transaction
             t.set_current_block(models::BlockType::AdvanceRobotToConveyor);
             t.set_next_block(models::BlockType::ReleaseRobotToConveyor);
             sys_state.add_to_robot_queue(t);
+
             sys_state.cec.add_to_front(t);
             return;
         }
@@ -191,26 +165,26 @@ fn execute_block(sys_state: &mut models::SystemState, mut t: models::Transaction
             // робот свободен
             let advance_time = sys_state.robot_uniform_distr.sample(&mut sys_state.rng);
             t.set_time(t.get_time() + advance_time);
+            // робот занят, пока транзакт его не освободит
+            sys_state.set_robot_busy_until(t.get_time());
+
             t.set_current_block(models::BlockType::ReleaseRobotToConveyor);
             t.set_next_block(models::BlockType::Terminate);
             sys_state.fec.add(t);
             return;
         }
         models::BlockType::ReleaseRobotToConveyor => {
-            if sys_state.get_current_time() < t.get_time() {
-                return;
-            }
 
             // удаляем из очереди первую деталь
             sys_state.delete_from_robot_queue();
 
             t.set_current_block(models::BlockType::Terminate);
             t.set_next_block(models::BlockType::Terminate);
-            sys_state.cec.add_to_back(t);
+            sys_state.cec.add_to_front(t);
             return;
         }
         models::BlockType::Terminate => {
-            sys_state.cec.delete();
+            sys_state.inc_count_of_completed_details();
         }
     }
 }
