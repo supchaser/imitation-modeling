@@ -244,6 +244,7 @@ impl SystemState {
     }
 
     pub fn add_to_robot_queue(&mut self, t: Transaction) {
+        self.update_robot_queue_stats();
         self.robot_queue.push_back(t);
     }
 
@@ -256,12 +257,11 @@ impl SystemState {
     }
 
     pub fn add_to_machines_queue(&mut self, t: Transaction) {
-        self.update_machines_queue_stats();
         self.machines_queue.push_back(t);
     }
 
     pub fn delete_from_robot_queue(&mut self) {
-        self.update_machines_queue_stats();
+        self.update_robot_queue_stats();
         self.robot_queue.pop_front();
     }
 
@@ -273,9 +273,10 @@ impl SystemState {
         self.machines_queue.pop_front();
     }
 
-    pub fn update_machines_queue_stats(&mut self) {
+    pub fn update_robot_queue_stats(&mut self) {
         let duration = self.current_time - self.last_queue_change_time;
-        self.total_queue_length_time += duration * self.machines_queue.len() as f64;
+        println!("QUEUE LEN: {}", self.machines_queue.len());
+        self.total_queue_length_time += duration * self.robot_queue.len() as f64;
         self.last_queue_change_time = self.current_time;
     }
 }

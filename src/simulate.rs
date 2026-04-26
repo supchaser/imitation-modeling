@@ -56,7 +56,7 @@ pub fn run(system_state: &mut crate::models::SystemState) {
         }
     }
 
-    system_state.update_machines_queue_stats();
+    system_state.update_robot_queue_stats();
 
     let total_time = system_state.get_current_time();
     let robot_load = system_state.total_robot_busy_time / total_time;
@@ -71,6 +71,7 @@ pub fn run(system_state: &mut crate::models::SystemState) {
     };
 
     println!("total_robot_wait_time: {}", system_state.total_robot_wait_time);
+    println!("total_robot_wait_count: {}", system_state.total_robot_wait_count);
 
     println!("Общее время работы системы: {:.2}", total_time);
     println!("Коэффициент загрузки робота: {:.4}", robot_load);
@@ -129,7 +130,10 @@ fn execute_block(sys_state: &mut models::SystemState, mut t: models::Transaction
 
             let wait = sys_state.get_current_time() - t.robot_wait_start;
             sys_state.total_robot_wait_time += wait;
-            sys_state.total_robot_wait_count += 1;
+            if wait > 0.0 {
+                sys_state.total_robot_wait_count += 1;
+            }
+
 
             // удаляем из очереди первую заготовку
             sys_state.delete_from_robot_queue();
@@ -219,7 +223,9 @@ fn execute_block(sys_state: &mut models::SystemState, mut t: models::Transaction
 
             let wait = sys_state.get_current_time() - t.robot_wait_start;
             sys_state.total_robot_wait_time += wait;
-            sys_state.total_robot_wait_count += 1;
+            if wait > 0.0 {
+                sys_state.total_robot_wait_count += 1;
+            }
 
             // робот свободен
             let advance_time = sys_state.robot_uniform_distr.sample(&mut sys_state.rng);
