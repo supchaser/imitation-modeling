@@ -32,6 +32,7 @@ pub struct Transaction {
     pub current_block: BlockType,
     // next_block - адрес следующего блока
     pub next_block: BlockType,
+    pub robot_wait_start: f64, 
 }
 
 impl Eq for Transaction {}
@@ -89,7 +90,14 @@ pub struct SystemState {
     pub rng: StdRng,
 
     // число заверешенных транзактов
-    count_of_completed_details: i64
+    count_of_completed_details: i64,
+
+    pub total_robot_busy_time: f64,
+    pub total_machines_busy_time: f64,
+    pub total_robot_wait_time: f64,
+    pub total_robot_wait_count: u64,
+    pub total_queue_length_time: f64,
+    pub last_queue_change_time: f64,
 }
 
 impl Transaction {
@@ -99,6 +107,7 @@ impl Transaction {
             time,
             current_block: BlockType::Initial,
             next_block: BlockType::Generate,
+            robot_wait_start: 0.0,
         };
     }
 
@@ -201,6 +210,12 @@ impl SystemState {
             right_triangular_distr: distribution::RightTriangular::new(left, right),
             rng: StdRng::seed_from_u64(seed),
             count_of_completed_details: 0,
+            total_robot_busy_time: 0.0,
+            total_machines_busy_time: 0.0,
+            total_robot_wait_time: 0.0,
+            total_robot_wait_count: 0,
+            total_queue_length_time: 0.0,
+            last_queue_change_time: 0.0,
         };
     }
 
@@ -241,10 +256,12 @@ impl SystemState {
     }
 
     pub fn add_to_machines_queue(&mut self, t: Transaction) {
+        self.update_machines_queue_stats();
         self.machines_queue.push_back(t);
     }
 
     pub fn delete_from_robot_queue(&mut self) {
+        self.update_machines_queue_stats();
         self.robot_queue.pop_front();
     }
 
@@ -254,5 +271,11 @@ impl SystemState {
 
     pub fn delete_from_machines_queue(&mut self) {
         self.machines_queue.pop_front();
+    }
+
+    pub fn update_machines_queue_stats(&mut self) {
+        let duration = self.current_time - self.last_queue_change_time;
+        self.total_queue_length_time += duration * self.machines_queue.len() as f64;
+        self.last_queue_change_time = self.current_time;
     }
 }
